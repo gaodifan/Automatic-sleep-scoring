@@ -2,10 +2,10 @@ function [] = autoScoreEDF(fileName, rejFrac, skip, channel_score, channel_EEG, 
 
 % MULTIPLE-CLASSIFIER AUTOSCORING OF EDF SLEEP RECORDINGS
 
-% EXAMPLE: autoScoreEDF('C:\Users\Vance\Documents\Turek Lab\Autoscoring\MATLAB code\HLU C2_11 wk3 trained.edf', 0.05, 1, 3, 5, 6, true)
+% EXAMPLE: autoScoreEDF('C:\Users\Vance\Documents\MTLAB\Sleep\HLU C2_11 wk3 trained.edf', 0.05, 1, 3, 5, 6, true)
 
 %   Read .edf files exported by PAL 8200 or PAL 8400.
-%   Uses 1 channel of EEG and 1 channel of EMG as input.
+%   Uses 1 channel of EEG and 1 channel of EMG as features.
 %   Learns from training scores (~720 epochs) provided in the recording.
 %   Autsocores the recording using a combination of LDA, SVM, NB, NN, 
 %   Random-subspace kNN, Random-subspace Tree, and Bagged Tree.
@@ -20,7 +20,7 @@ function [] = autoScoreEDF(fileName, rejFrac, skip, channel_score, channel_EEG, 
 % the variables in the following section.
 
 
-%% Description of function's inputs
+%% Description of function's featuress
 
 % fileName:
 %   The path and filename to the recording you want to score.
@@ -29,7 +29,7 @@ function [] = autoScoreEDF(fileName, rejFrac, skip, channel_score, channel_EEG, 
 %   The fraction of epochs to reject, leaving unscored. For example,
 %   rejFrac=0.05 will leave 5% of epochs unscored for manual review. 
 %   Set to 0 for full automation.
-%   Input value between 0 and 1.
+%   features value between 0 and 1.
 
 % skip:
 %   if sampling rate is high, may keep one sample per SKIP samples to speed
@@ -54,7 +54,7 @@ function [] = autoScoreEDF(fileName, rejFrac, skip, channel_score, channel_EEG, 
 
 % pauseTF:
 %   True-false indicating whether to pause for inspection of settings
-%   before continuing. If no option is inputed, the default is true.
+%   before continuing. If no option is featuresed, the default is true.
 %   Useful to set to false if running a multi-file loop.
 
 
@@ -115,7 +115,7 @@ for s=1:nSignals
 end
 disp(' ')
 
-disp('Assigning the following signal channels to be inputs:')
+disp('Assigning the following signal channels to be featuress:')
 disp([' Score: ' num2str(channel_score) '   EEG: ' num2str(channel_EEG) '   EMG: ' num2str(channel_EMG)])
 if any([channel_score > nSignals, channel_EEG > nSignals, channel_EMG > nSignals])
     error('*ERROR*: Assigned channel numbers are higher than number of channels! \n%s',...
@@ -244,15 +244,15 @@ clear eeg2Pbuf emgPbuf eeg2Vect emgVect hr nfft sampPerRec
 
 % split data into logarithmic frequency bands
 bands = logspace(log10(0.5), log10(Hz/2), 21);
-input = zeros(nEpochs, 20);
+features = zeros(nEpochs, 20);
 
 for  i=1:20 
-    input(:,i) = sum(eeg2P(and(eeg2F>=bands(i), eeg2F<bands(i+1)),:), 1)';
+    features(:,i) = sum(eeg2P(and(eeg2F>=bands(i), eeg2F<bands(i+1)),:), 1)';
 end
-input(:,21) = sum(emgP(and(emgF>=4, emgF<40),:));
+features(:,21) = sum(emgP(and(emgF>=4, emgF<40),:));
 
 % normalize using a log transformation and smooth over time
-input = conv2(log(input), fspecial('gaussian',[5 1],0.75),'same');
+features = conv2(log(features), fspecial('gaussian',[5 1],0.75),'same');
 
 % clean up artifacts in training scores using outlier fence criteria
 iqr_wake = quantile(eegRMS, 0.75) - quantile(eegRMS, 0.25); 
@@ -288,114 +288,16 @@ end
 clear i
 
 
-%% Classification by Individual Methods
+%% Train algorithm and predict remaining sleep scores
 
 disp(' ')
 disp('Auto-scoring...')
 
 trainSet = trainingScores==1 | trainingScores==2 | trainingScores==3;
 
-% Linear Discriminant Analysis
-disp('  Linear Discriminant Analysis')
-LDAmodel = fitcdiscr(input(trainSet,:), trainingScores(trainSet));
-[~, confidLda] = predict(LDAmodel,input);
+models = MCStrain( features(trainSet,:), recording.scores(trainSet));
 
-% Naive Bayes
-disp('  Naive Bayes')
-model = fitcnb(input(trainSet,:),trainingScores(trainSet));
-[~, confidNb] = predict(model,input);
-
-% Support Vector Machine
-disp('  Support Vector Machine')
-  % one against all
-trainingScoresSvm = trainingScores;
-trainingScoresSvm(trainingScoresSvm==2 | trainingScoresSvm==3) = 4;
-SVM = fitcsvm(input(trainSet,:),trainingScoresSvm(trainSet),'BoxConstraint',1);
-SVM = fitPosterior(SVM);
-[~, confidSvmW] = predict(SVM,input);
-
-trainingScoresSvm = trainingScores;
-trainingScoresSvm(trainingScoresSvm==1 | trainingScoresSvm==3) = 4;
-SVM = fitcsvm(input(trainSet,:),trainingScoresSvm(trainSet),'BoxConstraint',1);
-SVM = fitPosterior(SVM);
-[~, confidSvmN] = predict(SVM,input);
-
-trainingScoresSvm = trainingScores;
-trainingScoresSvm(trainingScoresSvm==1 | trainingScoresSvm==2) = 4;
-SVM = fitcsvm(input(trainSet,:),trainingScoresSvm(trainSet),'BoxConstraint',1);
-SVM = fitPosterior(SVM);
-[~, confidSvmR] = predict(SVM,input);
-
-  % confidence scores
-confidSvm = [confidSvmW(:,1) confidSvmN(:,1) confidSvmR(:,1)];
-for k = 1:nEpochs
-    confidSvm(k,:) = confidSvm(k,:) / sum(confidSvm(k,:));
-end
-
-clear autoconfidSvmwake autoScoreNR autoScoreWN autoScoreWR trainingScoresWake
-clear LDAmodel bayesModel SVM
-
-% Neural Network
-confidNn(1:nEpochs,3) = 0;
-%   commented out because many MATLAB installations don't include the
-%   neural network package
-%{
-target(recording.scores==1,1) = true;
-target(recording.scores==2,2) = true;
-target(recording.scores==3,3) = true;
-
-% create a pattern recognition network
-hiddenLayerSize = 10;
-net = patternnet(hiddenLayerSize);
-
-% setup division of data for training and validation
-net.divideParam.trainRatio = 50/100;
-net.divideParam.valRatio = 50/100;
-net.divideParam.testRatio = 0/100;
-
-% train the network
-[net,~] = train(net,input(trainSet,:)',target(trainSet,:)');
-
-% classify
-y = net(input');
-confidNn = y';
-%}
-
-
-%% Classification by Ensemble Methods
-
-% Bagged Decision Tree
-disp('  Bagged Decision Tree (ensemble of 100)')
-model = fitensemble(input(trainSet,:), num2str(trainingScores(trainSet)),'Bag',100,'tree','type','classification');
-[~, confidDtBag] = predict(model,input);
-
-% Random Subspace Decision Tree and k-NN
-disp('  Random Subspace Tree and k-NN (ensemble of 100):')
-
-outputDtRS = zeros(nEpochs,100);
-outputKnnRS = zeros(nEpochs,100);
-
-for learner = 1:100
-    if mod(learner,5) == 0
-        disp(learner)
-    end
-    
-    subspace = randsample(20, 10, false);
-    
-    model = fitcknn(input(trainSet,[subspace' 21]), trainingScores(trainSet));
-    outputKnnRS(:,learner) = predict(model, input(:,[subspace' 21]));   
-    
-    model = fitctree(input(trainSet,[subspace' 21]), num2str(trainingScores(trainSet)));
-    autoScoresBuf = predict(model, input(:,[subspace' 21]));
-    outputDtRS(:,learner) = str2num(autoScoresBuf);    
-end
-
-confidKnnRS = [sum(outputKnnRS==1,2) sum(outputKnnRS==2,2) sum(outputKnnRS==3,2)] /100;
-confidDtRS = [sum(outputDtRS==1,2) sum(outputDtRS==2,2) sum(outputDtRS==3,2)] /100;
-
-disp('  Ensembles done.')
-
-clear outputTree outputKNN subspace model knn treeModel learner training
+[confidLda, confidNb, confidSvm, confidDtBag, confidDtRS, confidKnnRS] = MCSclassify( models, features);
 
 
 %% Classifier Fusion
@@ -547,7 +449,7 @@ clear dataBuf headerLegnth epShortsLength fileID file2ID k
 disp(' ')
 disp('Done!')
 disp(' ')
-disp('Input file was:')
+disp('features file was:')
 disp(['   ' fileName])
 disp(' ');
 disp('Autoscored file written to:')
