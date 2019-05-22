@@ -12,7 +12,7 @@ function [] = autoScoreEDF(fileName, rejFrac, skip, channel_score, channel_EEG, 
 %   Writes autoscores into new file.
 
 % Vance Gao 
-% Last edited 2019-04-04
+% Last edited 2019-05-22
 % ------------------------------------------------------------------------
 
 % To change this function back to a script, simply delete the function
@@ -197,47 +197,27 @@ clear k j s fileID epochBuf fileInfo skip headerBuf ind
 disp(' ')
 disp('Performing short-time Fourier transform:') 
 
-numHrs = ceil(nEpochs/360);
+nfft = 2^nextpow2( sampPerEp);
 
-nfft = 2^nextpow2(sampPerEp);
+eeg2P = zeros(  nEpochs, ceil( (nfft+1)/2));
+emgP  = zeros( nEpochs, ceil( (nfft+1)/2));
+eegRMS = zeros(nEpochs,1);
 
-eeg2P = zeros(ceil((nfft+1)/2), nEpochs);
-emgP = zeros(ceil((nfft+1)/2), nEpochs);
-
-for hr = 1:numHrs
-    disp(['FFT: hour ' num2str(hr) '/' num2str(ceil(numHrs))])
-    
-    if hr ~= numHrs
-        eeg2Vect = reshape(recording.eeg2(1+(hr-1)*360: hr*360, :)', sampPerEp*360, 1);
-        emgVect = reshape(recording.emg(1+(hr-1)*360: hr*360, :)', sampPerEp*360, 1);        
-        
-        [~,eeg2F,~,eeg2Pbuf] = spectrogram(eeg2Vect, sampPerEp, 0, nfft, Hz);
-        [~,emgF,~,emgPbuf] = spectrogram(emgVect, sampPerEp, 0, nfft, Hz);
-        
-        eeg2P(:, 1+(hr-1)*360: hr*360) = eeg2Pbuf;
-        emgP(:, 1+(hr-1)*360: hr*360) = emgPbuf;
-        
-    else
-        eeg2Vect = reshape(recording.eeg2(1+(hr-1)*360: end, :)', sampPerEp*(nEpochs-(hr-1)*360), 1);
-        emgVect = reshape(recording.emg(1+(hr-1)*360: end, :)', sampPerEp*(nEpochs-(hr-1)*360), 1);
-        
-        [~,eeg2F,~,eeg2Pbuf] = spectrogram(eeg2Vect, sampPerEp, 0, nfft, Hz);
-        [~,emgF,~,emgPbuf] = spectrogram(emgVect, sampPerEp, 0, nfft, Hz);
-        
-        eeg2P(:, 1+(hr-1)*360: end) = eeg2Pbuf;
-        emgP(:, 1+(hr-1)*360: end) = emgPbuf;
+for k = 1:nEpochs
+    if mod(k, 1000) == 0
+        disp(['PSD: epoch ' num2str(k) '/' num2str(nEpochs)])
     end
+    
+    %Power spectral density
+    [eeg2P(k,:), eeg2F] = periodogram( recording.eeg2(k,:), hamming(sampPerEp), [], Hz);
+    [emgP( k,:), emgF ] = periodogram( recording.emg( k,:), hamming(sampPerEp), [], Hz);
+    
+    %total power for later artifact detection
+    eegRMS(k) = rms(recording.eeg2(n,:)); 
+    
 end
 
 trainingScores = recording.scores;
-
-% calculate root-mean-squares (total power) for later artifact detection
-eegRMS = zeros(nEpochs,1);
-for n = 1:nEpochs
-    eegRMS(n) = rms(recording.eeg2(n,:));
-end
-
-clear eeg2Pbuf emgPbuf eeg2Vect emgVect hr nfft sampPerRec
 
 
 %% Pre-Classification Processing, Feature Extraction
@@ -246,26 +226,27 @@ clear eeg2Pbuf emgPbuf eeg2Vect emgVect hr nfft sampPerRec
 bands = logspace(log10(0.5), log10(Hz/2), 21);
 features = zeros(nEpochs, 20);
 
-for  i=1:20 
-    features(:,i) = sum(eeg2P(and(eeg2F>=bands(i), eeg2F<bands(i+1)),:), 1)';
+for  b = 1:20 
+    bandInds = eeg2F>=bands(b) & eeg2F<bands(b+1);
+    features(:, b) = sum( eeg2P(:, bandInds), 2);
 end
-features(:,21) = sum(emgP(and(emgF>=4, emgF<40),:));
+features(:,21) = sum( emgP(:, emgF>=4 & emgF<40), 2);
 
 % normalize using a log transformation and smooth over time
-features = conv2(log(features), fspecial('gaussian',[5 1],0.75),'same');
+features = conv2( log( features), fspecial( 'gaussian', [5 1], 0.75), 'same');
 
 % clean up artifacts in training scores using outlier fence criteria
-iqr_wake = quantile(eegRMS, 0.75) - quantile(eegRMS, 0.25); 
-highFence_wake = quantile(eegRMS, 0.75) + 3*iqr_wake;
-lowFence_wake = quantile(eegRMS, 0.25) - 3*iqr_wake;
+iqr_wake = quantile( eegRMS, 0.75) - quantile( eegRMS, 0.25); 
+highFence_wake = quantile( eegRMS, 0.75) + 3*iqr_wake;
+lowFence_wake = quantile( eegRMS, 0.25) - 3*iqr_wake;
 
-iqr_NREM = quantile(eegRMS, 0.75) - quantile(eegRMS, 0.25); 
-highFence_NREM = quantile(eegRMS, 0.75) + 3*iqr_NREM;
-lowFence_NREM = quantile(eegRMS, 0.25) - 3*iqr_NREM;
+iqr_NREM = quantile( eegRMS, 0.75) - quantile( eegRMS, 0.25); 
+highFence_NREM = quantile( eegRMS, 0.75) + 3*iqr_NREM;
+lowFence_NREM = quantile( eegRMS, 0.25) - 3*iqr_NREM;
 
-iqr_REM = quantile(eegRMS, 0.75) - quantile(eegRMS, 0.25); 
-highFence_REM = quantile(eegRMS, 0.75) + 3*iqr_REM;
-lowFence_REM = quantile(eegRMS, 0.25) - 3*iqr_REM;
+iqr_REM = quantile( eegRMS, 0.75) - quantile( eegRMS, 0.25); 
+highFence_REM = quantile( eegRMS, 0.75) + 3*iqr_REM;
+lowFence_REM = quantile( eegRMS, 0.25) - 3*iqr_REM;
 
 for k=1:nEpochs
     if trainingScores(k)==1
@@ -285,7 +266,7 @@ for k=1:nEpochs
     end
 end
 
-clear i
+clear b bandInds
 
 
 %% Train algorithm and predict remaining sleep scores
