@@ -1,6 +1,17 @@
 function [confidLda, confidNb, confidSvm, confidDtBag, confidDtRS, confidKnnRS] = MCSclassify( models, features)
 
-%Description
+% USE MCS TO MAKE CLASSIFICATIONS
+
+%   As input, takes models structure outputted by MCStrain.m and sample
+%   features.
+%   Output are confidence scores for each individual classification method.
+%   Can sum and max confidence scores to find overall class classification.
+
+% By: Vance Difan Gao
+% Last updated 2019/11/29
+
+
+%% Prediction by individual methods
 
 disp(' ')
 disp('Predicting classifications...')
@@ -11,17 +22,13 @@ nClasses = numel( classes);
 nSamples = size( features, 1);
 nLearners = numel( models.DtRS);
 
-
 % Linear Discriminant Analysis
 disp('  Linear Discriminant Analysis')
 [~, confidLda] = predict( models.Lda, features);
 
-
-
 %Naive Bayes
 disp('  Naive Bayes')
 [~, confidNb] = predict( models.Nb, features);
-
 
 % Support Vector Machine
 disp('  Support Vector Machine')
@@ -37,7 +44,7 @@ for k = 1:nSamples
     confidSvm(k,:) = confidSvm(k,:) / sum( confidSvm(k,:));
 end
 
-
+%% Prediction by ensemble methods
 % Bagged Decision Tree
 disp(['  Bagged Decision Tree (ensemble of ' num2str( nLearners) '):'])
 [~, confidDtBag] = predict( models.DtBag, features);
@@ -51,7 +58,7 @@ votesKnnRS = zeros( nSamples, nLearners);
 
 for learner = 1:nLearners
     if mod(learner,5) == 0
-        disp(learner)
+        disp(['Predicting using subspace ensemble: ' num2str(learner) ' / ' num2str( nLearners)])
     end
     
     votesDtRS(:,learner) = str2num( predict( models.DtRS{learner}, features(:, models.subspaceList(learner,:))));
@@ -68,6 +75,3 @@ end
 
 confidDtRS = confidDtRS / nLearners;
 confidKnnRS = confidKnnRS / nLearners;
-
-
-end

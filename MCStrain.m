@@ -1,11 +1,20 @@
 function models = MCStrain( features, labels) 
-% Description
+
+% TRAIN A MULTIPLE CLASSIFIER SYSTEM
+
+%   Trains a MCS classifier given training data, and outputs the prediction
+%   models in a structure.
+%   Use in conjunction with MCSclassify.m.
+
+% By: Vance Difan Gao
+% Last updated 2019/11/29
+
 
 %% Set parameters for enesemble learning
 
-nLearners = 100;
-subFeaturesFrac = 0.5;
-featuresFixed = 21;
+nLearners = 100; %number of individual classifiers to use in ensemble methods
+subFeaturesFrac = 0.5; %in subspace method, what proportion of features to use for each individual classifier
+featuresFixed = 21; %in subspace method, what features to always use
 
 
 %% Classification by Individual Methods
@@ -60,8 +69,8 @@ modelKnnRS = cell( nLearners, 1);
 subspaceList = zeros( nLearners, nSubFeatures);
 
 for learner = 1:nLearners
-    if mod(learner,5) == 0
-        disp(learner)
+    if mod( learner, 5) == 0
+        disp(['Training subspace ensemble: ' num2str(learner) ' / ' num2str( nLearners)])
     end
     
     subspace = sort( [randsample( featuresUnfixed, nFeaturesToSelect, false) featuresFixed]);
@@ -84,6 +93,3 @@ models.DtBag = modelDtBag;
 models.DtRS = modelDtRS;
 models.KnnRS = modelKnnRS;
 models.subspaceList = subspaceList;
-
-    
-end
