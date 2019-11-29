@@ -61,25 +61,21 @@ function autoScores = autoScoreEDF(fileName, rejFrac, skip, channel_score, chann
 %% Read the file
 
 % readSleepEDF function to read file
-recording = readSleepEDF( fileName, skip, channel_score, channel_EEG, channel_EMG, pauseTF);
+[recording, header] = readSleepEDF( fileName, skip, channel_score, channel_EEG, channel_EMG, pauseTF);
 tic
 
 trainingScores = recording.scores;
 trainSet = trainingScores==1 | trainingScores==2 | trainingScores==3;
 
-% re-read header to get and save useful info
-fileID = fopen( fileName);
-headerBuf = fread( fileID, 100000);
-
-headerLength = eval( char( headerBuf(185:192))) / 2; %in shorts ('int16')
-nEpochs = eval( char( headerBuf(237:244)));
-secPerEp = eval( char( headerBuf(245:252)));
-nSignals = eval( char( headerBuf(253:256)));
+headerLength = eval( char( header(185:192))) / 2; %in shorts ('int16')
+nEpochs = eval( char( header(237:244)));
+secPerEp = eval( char( header(245:252)));
+nSignals = eval( char( header(253:256)));
 
 signalLengths = zeros(nSignals,1);
 ind = 257 + 216 * nSignals;
 for s = 1:nSignals
-    signalLengths(s) = eval( char( headerBuf( (ind:(ind+7)) + (s-1)*8)));
+    signalLengths(s) = eval( char( header( (ind:(ind+7)) + (s-1)*8)));
 end
 epShortsLength = sum(signalLengths);
 
@@ -108,7 +104,7 @@ elseif sum( trainingScores==3) < 20
     return
 end
 
-clear headerBuf fileID
+clear header fileID
 
 
 %% Power Spectral Density for EEG2 and EMG
