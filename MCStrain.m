@@ -7,7 +7,7 @@ function models = MCStrain( features, labels)
 %   Use in conjunction with MCSclassify.m.
 
 % By: Vance Difan Gao
-% Last updated 2019/11/29
+% Last updated 2019/12/18
 
 
 %% Set parameters for enesemble learning
@@ -70,7 +70,7 @@ subspaceList = zeros( nLearners, nSubFeatures);
 
 for learner = 1:nLearners
     if mod( learner, 5) == 0
-        disp(['Training subspace ensemble: ' num2str(learner) ' / ' num2str( nLearners)])
+        disp(['  Training subspace ensemble: ' num2str(learner) ' / ' num2str( nLearners)])
     end
     
     subspace = sort( [randsample( featuresUnfixed, nFeaturesToSelect, false) featuresFixed]);

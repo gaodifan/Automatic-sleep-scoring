@@ -8,7 +8,7 @@ function [confidLda, confidNb, confidSvm, confidDtBag, confidDtRS, confidKnnRS] 
 %   Can sum and max confidence scores to find overall class classification.
 
 % By: Vance Difan Gao
-% Last updated 2019/11/29
+% Last updated 2019/12/18
 
 
 %% Prediction by individual methods
@@ -58,7 +58,7 @@ votesKnnRS = zeros( nSamples, nLearners);
 
 for learner = 1:nLearners
     if mod(learner,5) == 0
-        disp(['Predicting using subspace ensemble: ' num2str(learner) ' / ' num2str( nLearners)])
+        disp(['  Predicting using subspace ensemble: ' num2str(learner) ' / ' num2str( nLearners)])
     end
     
     votesDtRS(:,learner) = str2num( predict( models.DtRS{learner}, features(:, models.subspaceList(learner,:))));
